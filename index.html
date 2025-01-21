@@ -11,19 +11,8 @@
             --secondary-color: #C2B59B;
             --background-color: #F9F9F9;
             --card-background: #FFFFFF;
-            --missed-color: #FF5733;
-            --today-color: #4CAF50;
-            --completed-color: #2196F3;
-        }
-
-        [data-theme="dark"] {
-            --primary-color: #FFFFFF;
-            --secondary-color: #4B3513;
-            --background-color: #121212;
-            --card-background: #1E1E1E;
-            --missed-color: #FF8A65;
-            --today-color: #81C784;
-            --completed-color: #64B5F6;
+            --label-incomplete: #FF5733;
+            --label-completed: #4CAF50;
         }
 
         body {
@@ -53,18 +42,27 @@
             font-size: 1.2rem;
         }
 
-        .theme-toggle {
-            position: absolute;
-            top: 15px;
-            right: 15px;
-            background: var(--secondary-color);
-            color: var(--primary-color);
+        .sort-options {
+            display: flex;
+            justify-content: center;
+            margin: 20px 0;
+        }
+
+        .sort-options button {
+            background-color: var(--primary-color);
+            color: var(--secondary-color);
             border: none;
             padding: 10px 15px;
             font-size: 1rem;
-            cursor: pointer;
+            margin: 0 10px;
             border-radius: 5px;
-            transition: background-color 0.3s ease, color 0.3s ease;
+            cursor: pointer;
+            transition: background-color 0.3s ease;
+        }
+
+        .sort-options button:hover {
+            background-color: var(--secondary-color);
+            color: var(--primary-color);
         }
 
         main {
@@ -91,6 +89,7 @@
             padding: 15px;
             width: 220px;
             box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+            position: relative;
             transition: transform 0.3s ease, box-shadow 0.3s ease;
         }
 
@@ -105,39 +104,29 @@
         }
 
         .day-card p {
-            margin: 0 0 15px;
+            margin: 0 0 10px;
         }
 
-        .day-card.missed {
-            border: 2px solid var(--missed-color);
+        .day-card a {
+            text-decoration: none;
+            color: var(--label-completed);
+            font-weight: bold;
         }
 
-        .day-card.today {
-            border: 2px solid var(--today-color);
+        .day-card a:hover {
+            text-decoration: underline;
         }
 
-        .day-card.completed {
-            border: 2px solid var(--completed-color);
-        }
-
-        button {
-            padding: 10px;
-            margin: 5px 0;
-            font-size: 0.9rem;
-            cursor: pointer;
-            border: none;
+        .label-incomplete {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            background-color: var(--label-incomplete);
+            color: white;
+            padding: 5px 10px;
+            font-size: 0.8rem;
+            font-weight: bold;
             border-radius: 5px;
-            width: 100%;
-        }
-
-        .mark-completed {
-            background-color: var(--today-color);
-            color: #FFFFFF;
-        }
-
-        .reschedule {
-            background-color: var(--missed-color);
-            color: #FFFFFF;
         }
 
         footer {
@@ -153,8 +142,12 @@
     <header>
         <h1>1-Year Bible Reading Plan</h1>
         <p>Stay on track and grow spiritually!</p>
-        <button class="theme-toggle" id="theme-toggle">Switch to Dark Mode</button>
     </header>
+    <div class="sort-options">
+        <button id="sort-default">Sort by Default</button>
+        <button id="sort-completed">Show Completed First</button>
+        <button id="sort-incomplete">Show Incomplete First</button>
+    </div>
     <main>
         <h2>Daily Readings</h2>
         <div class="reading-plan" id="reading-plan"></div>
@@ -163,60 +156,70 @@
         <p>&copy; 2025 Chronological Bible Plan</p>
     </footer>
     <script>
-        const readingPlanContainer = document.getElementById('reading-plan');
-        const themeToggle = document.getElementById('theme-toggle');
-        let missedDays = [];
         let completedDays = JSON.parse(localStorage.getItem('completedDays')) || [];
 
-        // Fetch and render the plan
+        function getFirstChapter(reading) {
+            const match = reading.match(/([a-zA-Z]+) (\d+)/);
+            return match ? { book: match[1], chapter: match[2] } : null;
+        }
+
+        function renderPlan(days, container) {
+            container.innerHTML = '';
+            days.forEach(day => {
+                const firstChapter = getFirstChapter(day.reading);
+                const link = firstChapter
+                    ? `https://www.blueletterbible.org/esv/${firstChapter.book.toLowerCase()}/${firstChapter.chapter}`
+                    : '#';
+
+                const card = document.createElement('div');
+                card.className = 'day-card';
+                card.innerHTML = `
+                    <h3>Day ${day.day}</h3>
+                    <p>${day.reading}</p>
+                    <a href="${link}" target="_blank">Go to Reading</a>
+                    ${
+                        completedDays.includes(day.day)
+                            ? ''
+                            : '<div class="label-incomplete">Incomplete</div>'
+                    }
+                `;
+                container.appendChild(card);
+            });
+        }
+
+        function sortDaysByCompletion(days, showCompletedFirst = true) {
+            return [...days].sort((a, b) => {
+                const aCompleted = completedDays.includes(a.day);
+                const bCompleted = completedDays.includes(b.day);
+                return showCompletedFirst
+                    ? bCompleted - aCompleted
+                    : aCompleted - bCompleted;
+            });
+        }
+
         fetch('reading-plan.json')
             .then(response => response.json())
             .then(data => {
-                const startDate = new Date(data.startDate);
-                const today = new Date();
-                const daysSinceStart = Math.floor((today - startDate) / (1000 * 60 * 60 * 24)) + 1;
+                const readingPlanContainer = document.getElementById('reading-plan');
+                renderPlan(data.days, readingPlanContainer);
 
-                data.days.forEach(day => {
-                    const card = document.createElement('div');
-                    card.className = 'day-card';
-                    card.innerHTML = `
-                        <h3>Day ${day.day}</h3>
-                        <p>${day.reading}</p>
-                        <button class="mark-completed" data-day="${day.day}">Mark as Completed</button>
-                        <button class="reschedule" data-day="${day.day}">Reschedule</button>
-                    `;
-
-                    if (completedDays.includes(day.day)) {
-                        card.classList.add('completed');
-                    } else if (day.day < daysSinceStart) {
-                        card.classList.add('missed');
-                        missedDays.push(day);
-                    } else if (day.day === daysSinceStart) {
-                        card.classList.add('today');
-                    }
-
-                    readingPlanContainer.appendChild(card);
+                document.getElementById('sort-default').addEventListener('click', () => {
+                    renderPlan(data.days, readingPlanContainer);
                 });
 
-                setupEventListeners();
-            });
-
-        // Event listeners
-        function setupEventListeners() {
-            document.querySelectorAll('.mark-completed').forEach(button => {
-                button.addEventListener('click', e => {
-                    const day = parseInt(e.target.dataset.day);
-                    completedDays.push(day);
-                    localStorage.setItem('completedDays', JSON.stringify(completedDays));
-                    e.target.closest('.day-card').classList.add('completed');
+                document.getElementById('sort-completed').addEventListener('click', () => {
+                    const sortedDays = sortDaysByCompletion(data.days, true);
+                    renderPlan(sortedDays, readingPlanContainer);
                 });
-            });
 
-            themeToggle.addEventListener('click', () => {
-                document.body.dataset.theme = document.body.dataset.theme === 'dark' ? '' : 'dark';
-                themeToggle.textContent = document.body.dataset.theme === 'dark' ? 'Switch to Light Mode' : 'Switch to Dark Mode';
+                document.getElementById('sort-incomplete').addEventListener('click', () => {
+                    const sortedDays = sortDaysByCompletion(data.days, false);
+                    renderPlan(sortedDays, readingPlanContainer);
+                });
+            })
+            .catch(error => {
+                console.error('Error loading the reading plan:', error);
             });
-        }
     </script>
 </body>
 </html>
