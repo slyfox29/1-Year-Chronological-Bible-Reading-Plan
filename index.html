@@ -11,8 +11,12 @@
             --secondary-color: #C2B59B;
             --background-color: #F9F9F9;
             --card-background: #FFFFFF;
-            --label-incomplete: #FF5733;
-            --label-completed: #4CAF50;
+            --label-incomplete: #FFC107; /* Yellow for incomplete */
+            --label-overdue: #FF5733;   /* Red for overdue */
+            --label-completed: #4CAF50; /* Green for completed */
+            --dark-background: #2E2E2E;
+            --dark-primary: #C2B59B;
+            --dark-secondary: #4B3513;
         }
 
         body {
@@ -22,6 +26,11 @@
             background-color: var(--background-color);
             color: var(--primary-color);
             transition: background-color 0.3s ease, color 0.3s ease;
+        }
+
+        body.dark-mode {
+            background-color: var(--dark-background);
+            color: var(--dark-primary);
         }
 
         header {
@@ -48,7 +57,7 @@
             margin: 20px 0;
         }
 
-        .sort-options button {
+        .sort-options select {
             background-color: var(--primary-color);
             color: var(--secondary-color);
             border: none;
@@ -60,7 +69,7 @@
             transition: background-color 0.3s ease;
         }
 
-        .sort-options button:hover {
+        .sort-options select:hover {
             background-color: var(--secondary-color);
             color: var(--primary-color);
         }
@@ -129,6 +138,18 @@
             border-radius: 5px;
         }
 
+        .label-overdue {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            background-color: var(--label-overdue);
+            color: white;
+            padding: 5px 10px;
+            font-size: 0.8rem;
+            font-weight: bold;
+            border-radius: 5px;
+        }
+
         footer {
             text-align: center;
             padding: 10px;
@@ -144,9 +165,12 @@
         <p>Stay on track and grow spiritually!</p>
     </header>
     <div class="sort-options">
-        <button id="sort-default">Sort by Default</button>
-        <button id="sort-completed">Show Completed First</button>
-        <button id="sort-incomplete">Show Incomplete First</button>
+        <select id="sort-dropdown">
+            <option value="default">Sort by Default</option>
+            <option value="completed">Show Completed First</option>
+            <option value="incomplete">Show Incomplete First</option>
+        </select>
+        <button id="toggle-dark-mode">Toggle Dark Mode</button>
     </div>
     <main>
         <h2>Daily Readings</h2>
@@ -157,19 +181,25 @@
     </footer>
     <script>
         let completedDays = JSON.parse(localStorage.getItem('completedDays')) || [];
+        const today = new Date();
 
         function getFirstChapter(reading) {
             const match = reading.match(/([a-zA-Z]+) (\d+)/);
             return match ? { book: match[1], chapter: match[2] } : null;
         }
 
-        function renderPlan(days, container) {
+        function renderPlan(days, container, startDate) {
             container.innerHTML = '';
             days.forEach(day => {
                 const firstChapter = getFirstChapter(day.reading);
                 const link = firstChapter
                     ? `https://www.blueletterbible.org/esv/${firstChapter.book.toLowerCase()}/${firstChapter.chapter}`
                     : '#';
+
+                const dayDate = new Date(startDate);
+                dayDate.setDate(dayDate.getDate() + day.day - 1);
+
+                const isOverdue = dayDate < today && !completedDays.includes(day.day);
 
                 const card = document.createElement('div');
                 card.className = 'day-card';
@@ -180,7 +210,9 @@
                     ${
                         completedDays.includes(day.day)
                             ? ''
-                            : '<div class="label-incomplete">Incomplete</div>'
+                            : `<div class="${isOverdue ? 'label-overdue' : 'label-incomplete'}">
+                                ${isOverdue ? 'Overdue' : 'Incomplete'}
+                               </div>`
                     }
                 `;
                 container.appendChild(card);
@@ -197,24 +229,40 @@
             });
         }
 
+        function sortDaysByDate(days, startDate) {
+            return [...days].sort((a, b) => {
+                const dayA = new Date(startDate);
+                dayA.setDate(dayA.getDate() + a.day - 1);
+                const dayB = new Date(startDate);
+                dayB.setDate(dayB.getDate() + b.day - 1);
+                return dayA - dayB;
+            });
+        }
+
         fetch('reading-plan.json')
             .then(response => response.json())
             .then(data => {
                 const readingPlanContainer = document.getElementById('reading-plan');
-                renderPlan(data.days, readingPlanContainer);
+                const startDate = new Date(data.startDate);
 
-                document.getElementById('sort-default').addEventListener('click', () => {
-                    renderPlan(data.days, readingPlanContainer);
+                // Sort the days by the closest to today's date
+                const sortedDays = sortDaysByDate(data.days, startDate);
+                renderPlan(sortedDays, readingPlanContainer, startDate);
+
+                document.getElementById('sort-dropdown').addEventListener('change', (event) => {
+                    let sortedDays;
+                    if (event.target.value === 'completed') {
+                        sortedDays = sortDaysByCompletion(data.days, true);
+                    } else if (event.target.value === 'incomplete') {
+                        sortedDays = sortDaysByCompletion(data.days, false);
+                    } else {
+                        sortedDays = sortDaysByDate(data.days, startDate);
+                    }
+                    renderPlan(sortedDays, readingPlanContainer, startDate);
                 });
 
-                document.getElementById('sort-completed').addEventListener('click', () => {
-                    const sortedDays = sortDaysByCompletion(data.days, true);
-                    renderPlan(sortedDays, readingPlanContainer);
-                });
-
-                document.getElementById('sort-incomplete').addEventListener('click', () => {
-                    const sortedDays = sortDaysByCompletion(data.days, false);
-                    renderPlan(sortedDays, readingPlanContainer);
+                document.getElementById('toggle-dark-mode').addEventListener('click', () => {
+                    document.body.classList.toggle('dark-mode');
                 });
             })
             .catch(error => {
